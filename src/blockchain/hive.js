@@ -32,18 +32,17 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
   async function checkBlock(block_num, block) {
     const headValidator = await statusDatabase.findByName(`headValidator`);
     if (block_num % 5000 == 0 || !headValidator || headValidator.length === 0) eventEmitter.emit(`switchHeadValidator`, { headBlock: block_num });
-    if (block_num % 1000 == 0 && block_num % 5000 != 0) eventEmitter.emit(`heartbeat`, { headBlock: block_num })
+    if (block_num % 1000 == 0 && block_num % 5000 != 0) eventEmitter.emit(`heartbeat`, { headBlock: block_num });
 
     for (const transaction of block.transactions) {
-      for (const op of transaction.operations){
-        let type = op[0]
-        let data = op[1]
-        routeTransaction(type, data, transaction)
+      for (const op of transaction.operations) {
+        const [type, data] = op;
+        routeTransaction(type, data, transaction);
       }
     }
   }
 
-  async function routeTransaction(type, data, transaction){
+  async function routeTransaction(type, data, transaction) {
     try {
       switch (type){
         case 'transfer':

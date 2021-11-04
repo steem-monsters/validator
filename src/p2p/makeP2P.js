@@ -6,10 +6,10 @@ exports.makeP2P = ({ hive, validatorDatabase, eventEmitter }) => {
     sendEventByName
   });
 
-  async function listen(){
+  async function listen() {
     eventEmitter.on('new_block', (block_num, block) => {
       for (const transaction of block.transactions) {
-        for (const op of transaction.operations){
+        for (const op of transaction.operations) {
           const [type, data] = op;
 
           if (type === 'custom_json' && data.id === process.env.CUSTOM_JSON_ID && data.required_auths && data.required_auths.length > 0){
@@ -20,7 +20,7 @@ exports.makeP2P = ({ hive, validatorDatabase, eventEmitter }) => {
     });
   }
 
-  async function processTransaction(data, transaction_id){
+  async function processTransaction(data, transaction_id) {
     try {
       const json = JSON.parse(data.json);
       const tx_data = JSON.parse(json.data);

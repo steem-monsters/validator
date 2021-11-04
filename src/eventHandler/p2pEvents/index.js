@@ -20,9 +20,22 @@ async function p2pEventsListener(){
 
 async function proposedTransaction(data, proposalTransaction) {
   utils.log(`New proposal received on ${data.chain} for reference tx [${data.referenceTransaction}]!`);
-
-  // TODO: check if tx is already stored, if not, store it
   let currentValidator = await statusDatabase.findByName(`headValidator`);
+
+  // If this reference tx has not already been received and stored in the DB, store it now
+  const existing_tx = await transactionDatabase.findByReferenceID(data.referenceTransaction);
+
+  if (!existing_tx) {
+    await transactionDatabase.insert({
+      chain: data.chain,
+      referenceTransaction: data.referenceTransaction,
+      transaction: false,
+      isProcessed: false,
+      headValidator: currentValidator[0].data,
+      createdAt: new Date().getTime(),
+      signatures: []
+    });
+  }
 
   if (data.chain == 'hive') {
     let signedTransaction = await validator(`hive`, data.referenceTransaction, data.transaction, currentValidator[0].data);
@@ -85,7 +98,8 @@ async function signature(data, sender) {
         // If we have enough signatures, broadcast the transaction
         if (signatures.length >= requiredSignatures && currentValidator[0].data == process.env.VALIDATOR) {
           isAlreadyStored.transaction.signatures = signatures;
-          await hive.broadcast(isAlreadyStored.transaction);
+          const result = await hive.broadcast(isAlreadyStored.transaction);
+          utils.log(`Received ${signatures.length} / ${requiredSignatures} required signatures - broadcast Hive tx [${result.id}]!`);
         }
       }  else {
         console.log(`Signature was signed by ${signed}, but sent by ${sender[0]}`)
