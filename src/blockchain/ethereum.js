@@ -1,24 +1,22 @@
-exports.buildMakeEthereumInterface = ({ web3, eventEmitter, tokenABI, multisigABI, inputDataDecoder }) => {
+exports.buildMakeEthereumInterface = ({ web3, eth_interface, eventEmitter, tokenABI, multisigABI, inputDataDecoder }) => {
   return Object.freeze({
     streamEthereumEvents,
     getTransaction,
     decode,
     prepareAndSignMessage,
     isAddress
-  })
+  });
 
-  async function streamEthereumEvents(){
-    setInterval(async () => {
-      let events = await getERC20TransactionsByEvent();
-      eventEmitter.emit("ethereumConversion", events)
-    }, 1000 * 60)
-  }
-
-  async function getERC20TransactionsByEvent(){
-    let headBlock = await web3.eth.getBlockNumber();
-    let contract = new web3.eth.Contract(tokenABI, process.env.CONTRACT_ADDRESS);
-    let pastEvents = await contract.getPastEvents("TokenBurnToBC", {}, { fromBlock: 0, toBlock: headBlock - 12 })
-    return pastEvents;
+  async function streamEthereumEvents() {
+    eth_interface.stream([{
+      on_event: (event) => {         
+        if(event.event !== 'BridgeTransfer') return;
+        console.log(event);
+        eventEmitter.emit("ethereumConversion", [event]); 
+      },
+      contract_address: process.env.CONTRACT_ADDRESS,
+      contract_abi: tokenABI
+    }]);
   }
 
   async function getTransaction(transactionHash){

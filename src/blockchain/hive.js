@@ -1,3 +1,5 @@
+const { statusDatabase } = require("../dataAccess/index.js");
+
 exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
   return Object.freeze({
     streamBlockchain,
@@ -15,11 +17,11 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
     verifySignature
   })
 
-  async function streamBlockchain(){
+  async function streamBlockchain() {
     hive.stream({
       on_block: routeStream,
       irreversible: process.env.ENVIRONMENT == "production" ? true : false,
-    })
+    });
   }
 
   function routeStream(block_num, block){
@@ -27,8 +29,9 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
     checkBlock(block_num, block);
   }
 
-  async function checkBlock(block_num, block){
-    if (block_num % 5000 == 0) eventEmitter.emit(`switchHeadValidator`, { headBlock: block_num });
+  async function checkBlock(block_num, block) {
+    const headValidator = await statusDatabase.findByName(`headValidator`);
+    if (block_num % 5000 == 0 || !headValidator || headValidator.length === 0) eventEmitter.emit(`switchHeadValidator`, { headBlock: block_num });
     if (block_num % 1000 == 0 && block_num % 5000 != 0) eventEmitter.emit(`heartbeat`, { headBlock: block_num })
 
     for (const transaction of block.transactions) {

@@ -28,7 +28,7 @@ exports.makeStatusDatabase = ({ makeDatabase }) => {
 
   async function insert(data){
     const db = await makeDatabase();
-    const result = await db.collection("status").insertOne({ data });
+    const result = await db.collection("status").insertOne(data);
     return result.modifiedCount > 0 ? true : false
   }
 

@@ -4,8 +4,6 @@ const { MongoClient } = require('mongodb');
 const url = process.env.MONGODB_URL
 const client = new MongoClient(url, { useNewUrlParser: true, useUnifiedTopology: true  })
 
-start()
-
 const makeDatabase = async () => {
   if (!client.isConnected()) {
     await client.connect()
@@ -22,13 +20,9 @@ async function start(){
     db.createCollection(collections[i], function(err, res) {
       if (err) {
         console.log(`Error:`, err.message);
-        if (num == collections.length - 1) addPeers()
-        num++
       }
       else {
         console.log(`Collection ${collections[i]} created!`);
-        if (num == collections.length - 1) addPeers()
-        num++
       }
     });
   }
@@ -41,3 +35,5 @@ function getHiveHistory(){
 function getEthereumHistory(){
   // TODO: get all burn and mint events
 }
+
+start();

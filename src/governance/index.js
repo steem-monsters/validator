@@ -3,31 +3,30 @@ const { statusDatabase } = require("../dataAccess/index.js")
 const { hive } = require('../blockchain/index.js')
 const validators = require("./validators.js")
 
-async function listen(){
-  validators.checkValidators()
+async function listen() {
+  validators.checkValidators();
 
   console.log("Listening to governance changes...")
-  eventEmitter.on(`switchHeadValidator`, async (data) => {
-    let scheduleNumber = await getScheduleNumber(data.headBlock)
-    let newHeadValidator = await getNewHeadValidator(scheduleNumber)
-    console.log(`New head validator:`, newHeadValidator)
-    let saveNewHeadValidator = await statusDatabase.updateByName(`headValidator`, newHeadValidator)
-  })
+  eventEmitter.on(`switchHeadValidator`, switchHeadValidator);
 }
 
-async function getScheduleNumber(headBlock){
-  let accountDetails = await hive.getAccount(process.env.HIVE_DEPOSIT_ACCOUNT)
-  let n = accountDetails.active.account_auths.length + accountDetails.active.key_auths.length
-  let blockHash = await hive.getBlockHash(headBlock)
-  let scheduleNumber = parseInt(blockHash, 16) % n
-  return scheduleNumber;
+async function switchHeadValidator(data) {
+  let newHeadValidator = await getNewHeadValidator(data.headBlock);
+  console.log(`New head validator:`, newHeadValidator);
+
+  let currentValidator = await statusDatabase.findByName(`headValidator`);
+
+  if (!currentValidator || currentValidator.length === 0) {
+    await statusDatabase.insert({ name: 'headValidator', data: newHeadValidator });
+  } else {
+    await statusDatabase.updateByName(`headValidator`, newHeadValidator);
+  }
 }
 
-async function getNewHeadValidator(scheduleNumber){
-  let accountDetails = await hive.getAccount(process.env.HIVE_DEPOSIT_ACCOUNT)
-  if (scheduleNumber == 0) scheduleNumber = 1
-  let validator = accountDetails.active.account_auths[scheduleNumber - 1]
-  return validator[0];
+async function getNewHeadValidator(block_num) {
+  const accountDetails = await hive.getAccount(process.env.HIVE_DEPOSIT_ACCOUNT);
+  const scheduleNum = (block_num - block_num % 5000) / 5000;
+  return accountDetails.active.account_auths[scheduleNum % accountDetails.active.account_auths.length][0];
 }
 
 module.exports.listen = listen
