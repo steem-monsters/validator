@@ -152,47 +152,28 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
     return sendSignedTransaction;
   }
 
-  async function sendCustomJson(name, json){
-    return new Promise((resolve, reject) => {
-      let dhiveClient = new dhive.Client(process.env.HIVE_NODES.split(','), {
-        chainId: process.env.HIVE_CHAIN_ID,
-      })
-      let key = dhive.PrivateKey.fromString(process.env.ACTIVE_HIVE_KEY)
-      dhiveClient.broadcast.json({
-          required_auths: [process.env.VALIDATOR],
-          required_posting_auths: [],
-          id: "wrapped_hive_p2p",
-          json: JSON.stringify({
-            name: name,
-            data: json
-          }, null, ''),
-      }, key).then(
-          result => { console.log(result) },
-          error => { console.log(error) }
-      )
-    })
+  async function sendCustomJson(name, data) {
+    const dhiveClient = new dhive.Client(process.env.HIVE_NODES.split(','), { chainId: process.env.HIVE_CHAIN_ID });
+    const key = dhive.PrivateKey.fromString(process.env.ACTIVE_HIVE_KEY);
+
+    return dhiveClient.broadcast.json({
+        required_auths: [process.env.VALIDATOR],
+        required_posting_auths: [],
+        id: process.env.CUSTOM_JSON_ID,
+        json: JSON.stringify({ name, data }, null, ''),
+    }, key);
   }
 
   async function prepareTransferTransaction({ from, to, amount, currency, headValidator, referenceTransaction }) {
-    console.log(`from: ${from}`);
-    console.log(`to: ${to}`);
-    console.log(`amount: ${amount}`);
-    console.log(`currency: ${currency}`);
-    console.log(`headValidator: ${headValidator}`);
-    console.log(`referenceTransaction: ${referenceTransaction}`);
+    const dhiveClient = new dhive.Client(process.env.HIVE_NODES.split(','), { chainId: process.env.HIVE_CHAIN_ID });
+    const expireTime = 1000 * 3590;
+    const props = await dhiveClient.database.getDynamicGlobalProperties();
+    const ref_block_num = props.head_block_number & 0xFFFF;
+    const ref_block_prefix = Buffer.from(props.head_block_id, 'hex').readUInt32LE(4);
+    const expiration = new Date(Date.now() + expireTime).toISOString().slice(0, -5);
+    const extensions = [];
 
-    let dhiveClient = new dhive.Client(process.env.HIVE_NODES.split(','), {
-      chainId: process.env.HIVE_CHAIN_ID,
-    });
-
-    let expireTime = 1000 * 3590;
-    let props = await dhiveClient.database.getDynamicGlobalProperties();
-    let ref_block_num = props.head_block_number & 0xFFFF;
-    let ref_block_prefix = Buffer.from(props.head_block_id, 'hex').readUInt32LE(4);
-    let expiration = new Date(Date.now() + expireTime).toISOString().slice(0, -5);
-    let extensions = [];
-
-    let operations = [['custom_json',
+    const operations = [['custom_json',
      {
        required_auths: [process.env.HIVE_DEPOSIT_ACCOUNT],
        required_posting_auths: [],
@@ -237,8 +218,6 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
     try {
       const proposalTransaction = await transactionDatabase.findByReferenceID(referenceTransactionId);
       let transaction = proposalTransaction.transaction;
-
-      console.log(transaction);
 
       let msg = {
         expiration: transaction.expiration,

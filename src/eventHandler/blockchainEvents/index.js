@@ -1,8 +1,8 @@
+const utils = require('../../utils');
 const { eventEmitter } = require("../index.js");
-const { validator } = require("../../validator/index.js");
 const { transactionDatabase, statusDatabase } = require('../../dataAccess/index.js');
 const { p2p } = require("../../p2p/index.js");
-const { hive, ethereum } = require("../../blockchain/index.js");
+const { hive } = require("../../blockchain/index.js");
 const BigNumber = require('bignumber.js');
 
 async function blockchainEventsListener(){
@@ -45,18 +45,17 @@ async function blockchainEventsListener(){
       if (!isAlreadyProcessed) notProcessedTransactions.push(data[i])
     }
 
-    console.log(`${notProcessedTransactions.length} ethereum conversion(s) transactions not processed.`);
-
     for (i in notProcessedTransactions) {
       const tx = notProcessedTransactions[i];
+      const integer_amount = new BigNumber(tx.returnValues.amount);
+      const amount = parseFloat(parseFloat(integer_amount.dividedBy(`1e+${process.env.ETHEREUM_TOKEN_PRECISION}`).toString()).toFixed(3));
+
+      utils.log(`Found ${process.env.CHAIN_NAME} tx [${tx.transactionHash}] sending [${amount} ${process.env.TOKEN_SYMBOL}] to [@${tx.returnValues.externalAddress}].`);
 
       // Check if the current validator is the head validator, in which case it should propose the transaction
       let currentValidator = await statusDatabase.findByName(`headValidator`);
 
       if (currentValidator[0].data == process.env.VALIDATOR) {
-        const integer_amount = new BigNumber(tx.returnValues.amount);
-        const amount = parseFloat(parseFloat(integer_amount.dividedBy(`1e+${process.env.ETHEREUM_TOKEN_PRECISION}`).toString()).toFixed(3));
-
         let preparedTransaction = await hive.prepareTransferTransaction({
           from: process.env.HIVE_DEPOSIT_ACCOUNT,
           to: tx.returnValues.externalAddress,

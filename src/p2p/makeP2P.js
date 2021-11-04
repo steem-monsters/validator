@@ -1,59 +1,62 @@
+const utils = require('../utils');
+
 exports.makeP2P = ({ hive, validatorDatabase, eventEmitter }) => {
   return Object.freeze({
     listen,
     sendEventByName
-  })
+  });
 
   async function listen(){
     eventEmitter.on('new_block', (block_num, block) => {
       for (const transaction of block.transactions) {
         for (const op of transaction.operations){
-          let type = op[0]
-          let data = op[1]
-          if (type == 'custom_json' && data.id == 'wrapped_hive_p2p' && data.required_auths && data.required_auths.length > 0){
+          const [type, data] = op;
+
+          if (type === 'custom_json' && data.id === process.env.CUSTOM_JSON_ID && data.required_auths && data.required_auths.length > 0){
             processTransaction(data, transaction.transaction_id)
           }
         }
       }
-    })
+    });
   }
 
   async function processTransaction(data, transaction_id){
     try {
-      let json = JSON.parse(data.json)
+      const json = JSON.parse(data.json);
+      const tx_data = JSON.parse(json.data);
+
       switch (json.name) {
         case 'proposed_transaction':
-          // if (data.required_auths[0] != process.env.VALIDATOR){
-            eventEmitter.emit("proposed_transaction", JSON.parse(json.data), transaction_id)
-          // }
+            eventEmitter.emit("proposed_transaction", tx_data, transaction_id);
           break;
         case 'signature':
-          eventEmitter.emit("signature", JSON.parse(json.data), data.required_auths)
+          eventEmitter.emit("signature", tx_data, data.required_auths);
           break;
         case 'network_state':
-          eventEmitter.emit("network_state", JSON.parse(json.data))
+          eventEmitter.emit("network_state", tx_data);
           break;
         case 'propose_validator_removal':
-          eventEmitter.emit("propose_validator_removal", JSON.parse(json.data))
+          eventEmitter.emit("propose_validator_removal", tx_data);
           break;
         case 'propose_new_validator':
-          eventEmitter.emit("propose_new_validator", JSON.parse(json.data))
+          eventEmitter.emit("propose_new_validator", tx_data);
           break;
         case 'whitelist_validator':
           if (data.required_auths[0] == process.env.VALIDATOR){
-            eventEmitter.emit("whitelist_validator", JSON.parse(json.data))
+            eventEmitter.emit("whitelist_validator", tx_data);
           };
           break;
       }
-    } catch (e){
-      console.log(e)
+    } catch (e) {
+      console.log(e);
     }
   }
 
-  async function sendEventByName(eventName, eventData){
+  async function sendEventByName(eventName, eventData) {
     try {
-      let transaction = await hive.sendCustomJson(eventName, JSON.stringify(eventData));
-      return true;
+      const result = await hive.sendCustomJson(eventName, JSON.stringify(eventData));
+      utils.log(`Sent [${eventName}] in tx [${result.id}]`);
+      return result;
     } catch (e) {
       console.log(e);
       return false;
