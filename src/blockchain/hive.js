@@ -1,4 +1,4 @@
-const { statusDatabase } = require("../dataAccess/index.js");
+const { transactionDatabase, statusDatabase } = require("../dataAccess/index.js");
 
 exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
   return Object.freeze({
@@ -132,7 +132,7 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
       threshold: accountDetails[0].active.weight_threshold,
       weightPerAuth: weightPerAuth,
       requiredSignatures: accountDetails[0].active.weight_threshold / weightPerAuth,
-      auths: accountDetails[0].active.account_auths
+      auths: accountDetails[0].active.account_auths.map(a => a[0])
     }
   }
 
@@ -173,36 +173,56 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
     })
   }
 
-  async function prepareTransferTransaction({ from, to, amount, currency, memo, headValidator, referenceTransaction }){
+  async function prepareTransferTransaction({ from, to, amount, currency, headValidator, referenceTransaction }) {
+    console.log(`from: ${from}`);
+    console.log(`to: ${to}`);
+    console.log(`amount: ${amount}`);
+    console.log(`currency: ${currency}`);
+    console.log(`headValidator: ${headValidator}`);
+    console.log(`referenceTransaction: ${referenceTransaction}`);
+
     let dhiveClient = new dhive.Client(process.env.HIVE_NODES.split(','), {
       chainId: process.env.HIVE_CHAIN_ID,
-    })
-    currency == 'HDB' ? 'HBD' : "HIVE"
+    });
+
     let expireTime = 1000 * 3590;
     let props = await dhiveClient.database.getDynamicGlobalProperties();
     let ref_block_num = props.head_block_number & 0xFFFF;
     let ref_block_prefix = Buffer.from(props.head_block_id, 'hex').readUInt32LE(4);
     let expiration = new Date(Date.now() + expireTime).toISOString().slice(0, -5);
     let extensions = [];
-    let operations = [['transfer',
-     {'amount': `${parseFloat(amount * 0.995).toFixed(3)} ${currency}`,
-      'from': from,
-      'memo': memo,
-      'to': to}],
-      ['transfer',
-       {'amount': `${parseFloat(amount * 0.005).toFixed(3)} ${currency}`,
-        'from': from,
-        'memo': `0.5% headValidator fee for ${referenceTransaction}`,
-        'to': headValidator}
-      ]];
-    let tx = {
+
+    let operations = [['custom_json',
+     {
+       required_auths: [process.env.HIVE_DEPOSIT_ACCOUNT],
+       required_posting_auths: [],
+       id: `${process.env.CUSTOM_JSON_ID_PREFIX}token_transfer`,
+       json: JSON.stringify({
+         to,
+         qty: parseFloat(amount * (1 - process.env.FEE_PCT / 100)).toFixed(3),
+         token: currency,
+         memo: referenceTransaction
+       }),
+    }], ['custom_json',
+      {
+        required_auths: [process.env.HIVE_DEPOSIT_ACCOUNT],
+        required_posting_auths: [],
+        id: `${process.env.CUSTOM_JSON_ID_PREFIX}token_transfer`,
+        json: JSON.stringify({
+          to: headValidator,
+          qty: parseFloat(amount * (process.env.FEE_PCT / 100)).toFixed(3),
+          token: currency,
+          memo: `${process.env.FEE_PCT}% fee for ${referenceTransaction}`
+        }),
+     }]];
+
+    return {
       expiration,
       extensions,
       operations,
       ref_block_num,
       ref_block_prefix
-    }
-    return tx;
+    };
   }
 
   async function signMessage(message){
@@ -210,14 +230,16 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
     return signedMessage;
   }
 
-  async function verifySignature(signature, proposalTransactionId){
-    let dhiveClient = new dhive.Client(process.env.HIVE_NODES.split(','), {
-      chainId: process.env.HIVE_CHAIN_ID,
-    })
-    let { cryptoUtils, Signature } = dhive
+  async function verifySignature(signature, referenceTransactionId){
+    let dhiveClient = new dhive.Client(process.env.HIVE_NODES.split(','), { chainId: process.env.HIVE_CHAIN_ID });
+    let { cryptoUtils, Signature } = dhive;
+
     try {
-      let proposalTransaction = await getTransactionByID(proposalTransactionId)
-      let transaction = JSON.parse(JSON.parse(JSON.parse(proposalTransaction.operations[0][1].json).data).transaction)
+      const proposalTransaction = await transactionDatabase.findByReferenceID(referenceTransactionId);
+      let transaction = proposalTransaction.transaction;
+
+      console.log(transaction);
+
       let msg = {
         expiration: transaction.expiration,
         extensions: transaction.extensions,
@@ -225,16 +247,19 @@ exports.buildMakeHiveInterface = ({ hive, eventEmitter, dhive }) => {
         ref_block_num: transaction.ref_block_num,
         ref_block_prefix: transaction.ref_block_prefix
       };
+
       let sig = Signature.fromString(signature);
       let digest = cryptoUtils.transactionDigest(msg);
+
       // Finding public key of the private that was used to sign
       let key = (new Signature(sig.data, sig.recovery)).recover(digest);
-      if (key.toString() == 'STM5NdUbR15D1CRW5DNChpnFz7T2rdrvZpv1W5SWZXB8CPWvWoFnH') return ['posh-bot'] //get_key_references will return [[]] for posh-bot???
-      let [owner] = await dhiveClient.database.call('get_key_references', [[key]]);
-      if (owner) return owner;
-      else return false;
+
+      // Check which accounts have this key on the Hive blockchain
+      let key_refs = await dhiveClient.database.call('get_key_references', [[key]]);
+
+      return (key_refs && key_refs.length > 0) ? key_refs[0] : [];
     } catch (e) {
-      console.log(e)
+      console.log(e);
       return false;
     }
   }

@@ -11,7 +11,6 @@ exports.buildMakeEthereumInterface = ({ web3, eth_interface, eventEmitter, token
     eth_interface.stream([{
       on_event: (event) => {         
         if(event.event !== 'BridgeTransfer') return;
-        console.log(event);
         eventEmitter.emit("ethereumConversion", [event]); 
       },
       contract_address: process.env.CONTRACT_ADDRESS,

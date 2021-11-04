@@ -38,33 +38,35 @@ async function p2pEventsListener(){
 
   eventEmitter.on('signature', async (data, sender) => {
     try {
-      console.log(`New signature receved from ${sender} for ${data.proposalTransaction}!`)
-      if (data.chain == 'hive'){
-        let isValidSender = false
-        let signed = await hive.verifySignature(data.signature, data.proposalTransaction)
-        for (i in signed){
-          if (signed[i] == sender[0]) isValidSender = true;
-        }
-        let { requiredSignatures, auths } = await hive.getAuthoritiesInfo()
-        auths = auths.map((item) => item = item[0])
-        if (isValidSender && auths.includes(sender[0])){
-          let isAlreadyStored = await transactionDatabase.findByReferenceID(data.referenceTransaction)
-          let currentValidator = await statusDatabase.findByName(`headValidator`)
-          let signatures = []
+      console.log(`New signature receved from ${sender} for ${data.proposalTransaction}!`);
+      
+      if (data.chain == 'hive') {
+        // Verify the signature received
+        let signed = await hive.verifySignature(data.signature, data.referenceTransaction);
+        const isValidSender = signed.includes(sender[0]);
+
+        // Check the accounts that have authority on the multi-sig account
+        let { requiredSignatures, auths } = await hive.getAuthoritiesInfo();
+
+        // If the signature is valid from a multi-sig authority, save the signature
+        if (isValidSender && auths.includes(sender[0])) {
+          let isAlreadyStored = await transactionDatabase.findByReferenceID(data.referenceTransaction);
+          let currentValidator = await statusDatabase.findByName(`headValidator`);
+          let signatures = isAlreadyStored ? [...isAlreadyStored.signatures, data.signature] : [data.signature];
+
           if (!isAlreadyStored) {
             await transactionDatabase.insert({
               referenceTransaction: data.referenceTransaction,
               signatures: [data.signature]
-            })
-            signatures.push(data.signatue)
+            });
           } else {
-            await transactionDatabase.pushByReferenceID(data.referenceTransaction, data.signature)
-            signatures.push(isAlreadyStored.signatures)
-            signatures.push(data.signatue)
+            await transactionDatabase.pushByReferenceID(data.referenceTransaction, data.signature);
           }
-          if (signatures[0].length >= requiredSignatures && currentValidator[0].data == process.env.VALIDATOR){
-            isAlreadyStored.transaction.signatures = signatures[0]
-            let broadcast = await hive.broadcast(isAlreadyStored.transaction)
+
+          // If we have enough signatures, broadcast the transaction
+          if (signatures.length >= requiredSignatures && currentValidator[0].data == process.env.VALIDATOR) {
+            isAlreadyStored.transaction.signatures = signatures;
+            await hive.broadcast(isAlreadyStored.transaction);
           }
         }  else {
           console.log(`Signature was signed by ${signed}, but sent by ${sender[0]}`)

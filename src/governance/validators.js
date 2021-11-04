@@ -22,7 +22,7 @@ async function checkValidators(){
     }
     //compare auths and our database
     let databaseArray = active.map((obj) => { return obj.username })
-    let authsArray = authsInfo.auths.map((obj) => { return obj[0] })
+    let authsArray = authsInfo.auths;
     let onlyInDatabase = databaseArray.filter(x => !authsArray.includes(x)) //this auths have to be disabled
     let onlyInAuths = authsArray.filter(x => !databaseArray.includes(x)) //this auths have to be added
     if (onlyInDatabase){
